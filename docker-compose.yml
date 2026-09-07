@@ -15,3 +15,15 @@ services:
     restart: unless-stopped
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    depends_on:
+      - mysql
+
+  mysql:
+    image: mysql:8.0
+    container_name: eduweconnect-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: "Punith@1234"
+      MYSQL_DATABASE: role-allocation-service
+    ports:
+      - "3311:3306"
+    restart: unless-stopped
