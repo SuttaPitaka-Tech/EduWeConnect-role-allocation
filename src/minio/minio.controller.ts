@@ -9,7 +9,7 @@ interface MulterFile {
   mimetype: string;
 }
 
-@Controller('files')
+@Controller(['files', 'api/files'])
 export class MinioController {
   constructor(private readonly minioService: MinioService) {}
 

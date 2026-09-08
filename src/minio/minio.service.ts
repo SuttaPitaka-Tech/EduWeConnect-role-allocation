@@ -22,9 +22,10 @@ export class MinioService implements OnModuleInit {
 
   async onModuleInit() {
     await this.ensureBucketExists(this.defaultBucket);
+    await this.ensureBucketExists('organization-details');
   }
 
-  private async ensureBucketExists(bucketName: string) {
+  public async ensureBucketExists(bucketName: string) {
     try {
       await this.s3Client.send(new HeadBucketCommand({ Bucket: bucketName }));
       this.logger.log(`Bucket "${bucketName}" exists.`);
