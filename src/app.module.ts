@@ -1,11 +1,12 @@
 import { Module } from '@nestjs/common';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
-import { APP_GUARD } from '@nestjs/core';
-import { KeycloakConnectModule, ResourceGuard, RoleGuard, AuthGuard } from 'nest-keycloak-connect';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ConfigModule } from '@nestjs/config';
 import { MinioModule } from './minio/minio.module';
+import { AuthModule } from './auth/auth.module';
+import { UserRolesModule } from './user-roles/user-roles.module';
+import { OrganizationDetailsModule } from './organization-details/organization-details.module';
 
 @Module({
   imports: [
@@ -23,29 +24,12 @@ import { MinioModule } from './minio/minio.module';
       entities: [__dirname + '/**/*.entity{.ts,.js}'],
       synchronize: true, // Auto-create tables for dev
     }),
-    KeycloakConnectModule.register({
-      authServerUrl: process.env.KEYCLOAK_AUTH_SERVER_URL,
-      realm: process.env.KEYCLOAK_REALM,
-      clientId: process.env.KEYCLOAK_CLIENT_ID,
-      secret: process.env.KEYCLOAK_SECRET || '',
-    }),
     MinioModule,
+    AuthModule,
+    UserRolesModule,
+    OrganizationDetailsModule,
   ],
   controllers: [AppController],
-  providers: [
-    AppService,
-    {
-      provide: APP_GUARD,
-      useClass: AuthGuard,
-    },
-    {
-      provide: APP_GUARD,
-      useClass: ResourceGuard,
-    },
-    {
-      provide: APP_GUARD,
-      useClass: RoleGuard,
-    },
-  ],
+  providers: [AppService],
 })
 export class AppModule {}
