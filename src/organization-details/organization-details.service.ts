@@ -98,12 +98,26 @@ export class OrganizationDetailsService {
 
     const now = new Date();
 
+    let organizationStd: string[] = [];
+    const rawStd = data.organization_std || data.organizationStd;
+    if (Array.isArray(rawStd)) {
+      organizationStd = rawStd;
+    } else if (typeof rawStd === 'string' && rawStd.trim()) {
+      try {
+        const parsed = JSON.parse(rawStd);
+        organizationStd = Array.isArray(parsed) ? parsed : [rawStd];
+      } catch {
+        organizationStd = rawStd.split(',').map((s: string) => s.trim()).filter(Boolean);
+      }
+    }
+
     // 3. Create Organization Details record in MySQL
     const org = this.orgDetailsRepo.create({
       organization_name: data.organizationName || data.organization_name,
       organization_email: data.organizationEmail || data.organization_email,
       organization_mobile: data.organizationMobile || data.organization_mobile,
       organization_type: data.organizationType || data.organization_type,
+      organization_std: organizationStd,
       address: data.address,
       city: data.city,
       district: data.district,
@@ -155,29 +169,9 @@ export class OrganizationDetailsService {
   }
 
   async findAll() {
-    const orgs = await this.orgDetailsRepo.find({
+    return this.orgDetailsRepo.find({
       order: { registered_at: 'DESC' },
     });
-
-    return Promise.all(
-      orgs.map(async (org) => {
-        const [panUrl, gstUrl, regCertUrl, aadharUrl] = await Promise.all([
-          org.pan_file_id ? this.minioService.getFileUrl(org.pan_file_id, BUCKET_NAME) : null,
-          org.gst_file_id ? this.minioService.getFileUrl(org.gst_file_id, BUCKET_NAME) : null,
-          org.reg_cert_file_id ? this.minioService.getFileUrl(org.reg_cert_file_id, BUCKET_NAME) : null,
-          org.head_aadhar_file_id ? this.minioService.getFileUrl(org.head_aadhar_file_id, BUCKET_NAME) : null,
-        ]);
-        return {
-          ...org,
-          documentUrls: {
-            pan: panUrl,
-            gst: gstUrl,
-            regCert: regCertUrl,
-            headAadhar: aadharUrl,
-          },
-        };
-      }),
-    );
   }
 
   async findById(id: string) {
@@ -185,24 +179,7 @@ export class OrganizationDetailsService {
     if (!org) {
       throw new NotFoundException(`Organization with id ${id} not found`);
     }
-
-    // Attach presigned URLs for uploaded documents if they exist
-    const [panUrl, gstUrl, regCertUrl, aadharUrl] = await Promise.all([
-      org.pan_file_id ? this.minioService.getFileUrl(org.pan_file_id, BUCKET_NAME) : null,
-      org.gst_file_id ? this.minioService.getFileUrl(org.gst_file_id, BUCKET_NAME) : null,
-      org.reg_cert_file_id ? this.minioService.getFileUrl(org.reg_cert_file_id, BUCKET_NAME) : null,
-      org.head_aadhar_file_id ? this.minioService.getFileUrl(org.head_aadhar_file_id, BUCKET_NAME) : null,
-    ]);
-
-    return {
-      ...org,
-      documentUrls: {
-        pan: panUrl,
-        gst: gstUrl,
-        regCert: regCertUrl,
-        headAadhar: aadharUrl,
-      },
-    };
+    return org;
   }
 
   async updateStatus(
