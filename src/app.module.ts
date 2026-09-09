@@ -7,6 +7,7 @@ import { MinioModule } from './minio/minio.module';
 import { AuthModule } from './auth/auth.module';
 import { UserRolesModule } from './user-roles/user-roles.module';
 import { OrganizationDetailsModule } from './organization-details/organization-details.module';
+import { StaffDetailsModule } from './staff-details/staff-details.module';
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { OrganizationDetailsModule } from './organization-details/organization-d
     AuthModule,
     UserRolesModule,
     OrganizationDetailsModule,
+    StaffDetailsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

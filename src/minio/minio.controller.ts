@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Param, Query, UploadedFile, UseInterceptors } from '@nestjs/common';
+import { Controller, Post, Get, Req, Query, UploadedFile, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { MinioService } from './minio.service';
 
@@ -8,7 +8,7 @@ interface MulterFile {
   mimetype: string;
 }
 
-@Controller(['files', 'api/files'])
+@Controller(['files', 'api/files', 'minio', 'api/minio'])
 export class MinioController {
   constructor(private readonly minioService: MinioService) {}
 
@@ -19,7 +19,6 @@ export class MinioController {
       return { error: 'No file provided' };
     }
     
-    // Use a unique name for the file, e.g., prepending a timestamp
     const fileName = `${Date.now()}-${file.originalname}`;
     await this.minioService.uploadFile(file.buffer, fileName, file.mimetype);
     
@@ -29,16 +28,33 @@ export class MinioController {
     };
   }
 
-  @Get('download/:fileName')
+  @Get(['download', 'download/*'])
   async getFileUrl(
-    @Param('fileName') fileName: string,
+    @Req() req: any,
+    @Query('fileName') queryFileName?: string,
     @Query('bucket') bucket?: string,
   ) {
+    let fileName = queryFileName;
+    if (!fileName && req.params && req.params[0]) {
+      fileName = req.params[0];
+    }
+    if (!fileName) {
+      const match = req.url.match(/download\/(.+?)(\?|$)/);
+      if (match) {
+        fileName = decodeURIComponent(match[1]);
+      }
+    }
+    if (!fileName) {
+      return { error: 'fileName is required' };
+    }
+
     const isOrgDoc =
       fileName.startsWith('pan_') ||
       fileName.startsWith('gst_') ||
       fileName.startsWith('reg_cert_') ||
-      fileName.startsWith('aadhar_');
+      fileName.startsWith('aadhar_') ||
+      fileName.startsWith('staff-details/') ||
+      fileName.startsWith('staff_');
     const targetBucket = bucket || (isOrgDoc ? 'organization-details' : undefined);
     const url = await this.minioService.getFileUrl(fileName, targetBucket);
     return { url };
