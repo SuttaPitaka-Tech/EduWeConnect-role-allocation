@@ -23,6 +23,9 @@ export class OrganizationDetails {
   @Column({ name: 'organization_type' })
   organization_type: string;
 
+  @Column({ type: 'json', nullable: true, name: 'organization_std' })
+  organization_std: string[];
+
   @Column({ type: 'text', nullable: true })
   address: string;
 

@@ -1,7 +1,6 @@
-import { Controller, Post, Get, Param, UploadedFile, UseInterceptors, Res } from '@nestjs/common';
+import { Controller, Post, Get, Param, Query, UploadedFile, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { MinioService } from './minio.service';
-import { Response } from 'express';
 
 interface MulterFile {
   buffer: Buffer;
@@ -31,8 +30,17 @@ export class MinioController {
   }
 
   @Get('download/:fileName')
-  async getFileUrl(@Param('fileName') fileName: string) {
-    const url = await this.minioService.getFileUrl(fileName);
+  async getFileUrl(
+    @Param('fileName') fileName: string,
+    @Query('bucket') bucket?: string,
+  ) {
+    const isOrgDoc =
+      fileName.startsWith('pan_') ||
+      fileName.startsWith('gst_') ||
+      fileName.startsWith('reg_cert_') ||
+      fileName.startsWith('aadhar_');
+    const targetBucket = bucket || (isOrgDoc ? 'organization-details' : undefined);
+    const url = await this.minioService.getFileUrl(fileName, targetBucket);
     return { url };
   }
 }
