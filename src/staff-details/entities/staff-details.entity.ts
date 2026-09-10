@@ -75,6 +75,16 @@ export class StaffDetails {
     file_name?: string;
   }>;
 
+  // ── Residential & Address Details ───────────────────────────────────────────
+  @Column({ type: 'json', nullable: true, name: 'staff_address' })
+  staff_address: {
+    current_address?: string;
+    permanent_address?: string;
+    state?: string;
+    country?: string;
+    pincode?: string;
+  };
+
   // ── Employee Role & Subject Allocation ──────────────────────────────────────
   @Column({
     type: 'enum',

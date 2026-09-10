@@ -8,6 +8,7 @@ import { AuthModule } from './auth/auth.module';
 import { UserRolesModule } from './user-roles/user-roles.module';
 import { OrganizationDetailsModule } from './organization-details/organization-details.module';
 import { StaffDetailsModule } from './staff-details/staff-details.module';
+import { StudentDetailsModule } from './student-details/student-details.module';
 
 @Module({
   imports: [
@@ -30,6 +31,7 @@ import { StaffDetailsModule } from './staff-details/staff-details.module';
     UserRolesModule,
     OrganizationDetailsModule,
     StaffDetailsModule,
+    StudentDetailsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

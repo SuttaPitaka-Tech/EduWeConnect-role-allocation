@@ -54,7 +54,9 @@ export class MinioController {
       fileName.startsWith('reg_cert_') ||
       fileName.startsWith('aadhar_') ||
       fileName.startsWith('staff-details/') ||
-      fileName.startsWith('staff_');
+      fileName.startsWith('staff_') ||
+      fileName.startsWith('student-details/') ||
+      fileName.startsWith('student_');
     const targetBucket = bucket || (isOrgDoc ? 'organization-details' : undefined);
     const url = await this.minioService.getFileUrl(fileName, targetBucket);
     return { url };
