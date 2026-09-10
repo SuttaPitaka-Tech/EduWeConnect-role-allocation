@@ -30,6 +30,53 @@ const ALLOWED_MIME_TYPES = [
 ];
 const ALLOWED_EXTENSIONS = /\.(pdf|png|jpg|jpeg)$/i;
 
+/**
+ * Safely parses stringified JSON or returns fallback
+ */
+function safeJsonParse<T>(input: unknown, fallback: T): T {
+  if (input == null) return fallback;
+  if (typeof input !== 'string') return (input as T) ?? fallback;
+  try {
+    return JSON.parse(input) as T;
+  } catch {
+    return fallback;
+  }
+}
+
+/**
+ * Normalizes input (array, JSON string, or comma-delimited string) into string[]
+ */
+function parseStringArray(input: unknown): string[] {
+  if (Array.isArray(input)) return input.filter(Boolean);
+  if (typeof input !== 'string' || !input.trim()) return [];
+  try {
+    const parsed = JSON.parse(input);
+    return Array.isArray(parsed) ? parsed.filter(Boolean) : [input.trim()];
+  } catch {
+    return input.split(',').map((s) => s.trim()).filter(Boolean);
+  }
+}
+
+/**
+ * Normalizes staff address from payload object, JSON string, or discrete fields
+ */
+function parseStaffAddress(data: Record<string, any>, existing?: any): any {
+  const raw = data.staff_address ?? data.staffAddress;
+  if (raw) {
+    return safeJsonParse(raw, typeof raw === 'object' ? raw : { current_address: String(raw) });
+  }
+
+  const fields = {
+    current_address: data.current_address ?? data.currentAddress ?? existing?.current_address,
+    permanent_address: data.permanent_address ?? data.permanentAddress ?? existing?.permanent_address,
+    state: data.state ?? existing?.state,
+    country: data.country ?? existing?.country,
+    pincode: data.pincode ?? existing?.pincode,
+  };
+
+  return Object.values(fields).some(Boolean) ? fields : (existing ?? null);
+}
+
 @Injectable()
 export class StaffDetailsService {
   private readonly logger = new Logger(StaffDetailsService.name);
@@ -112,38 +159,18 @@ export class StaffDetailsService {
       }
     }
 
-    // 3. Upload any provided statutory and experience files
-    const panFileId = await this.uploadDoc(files?.panFile?.[0], 'staff_pan');
-    const aadharFileId = await this.uploadDoc(files?.aadharFile?.[0], 'staff_aadhar');
-    const expLetterFileId = await this.uploadDoc(files?.expLetterFile?.[0], 'staff_exp');
-    const relievingLetterFileId = await this.uploadDoc(files?.relievingLetterFile?.[0], 'staff_relieving');
+    // 3. Upload any provided statutory and experience files concurrently
+    const [panFileId, aadharFileId, expLetterFileId, relievingLetterFileId] = await Promise.all([
+      this.uploadDoc(files?.panFile?.[0], 'staff_pan'),
+      this.uploadDoc(files?.aadharFile?.[0], 'staff_aadhar'),
+      this.uploadDoc(files?.expLetterFile?.[0], 'staff_exp'),
+      this.uploadDoc(files?.relievingLetterFile?.[0], 'staff_relieving'),
+    ]);
 
-    // 3. Process subjects if teacher
-    let parsedSubjects: string[] = [];
-    const rawSubjects = data.subjects;
-    if (Array.isArray(rawSubjects)) {
-      parsedSubjects = rawSubjects;
-    } else if (typeof rawSubjects === 'string' && rawSubjects.trim()) {
-      try {
-        const parsed = JSON.parse(rawSubjects);
-        parsedSubjects = Array.isArray(parsed) ? parsed : [rawSubjects];
-      } catch {
-        parsedSubjects = rawSubjects.split(',').map((s: string) => s.trim()).filter(Boolean);
-      }
-    }
-
-    // 4. Process additional documents
-    let additionalDocuments: Array<{ docName: string; file_id?: string; file_name?: string }> = [];
-    const rawAddDocs = data.additional_documents || data.additionalDocuments;
-    if (Array.isArray(rawAddDocs)) {
-      additionalDocuments = rawAddDocs;
-    } else if (typeof rawAddDocs === 'string' && rawAddDocs.trim()) {
-      try {
-        additionalDocuments = JSON.parse(rawAddDocs);
-      } catch {
-        additionalDocuments = [];
-      }
-    }
+    // 4. Parse complex payloads cleanly with functional helpers
+    const parsedSubjects = parseStringArray(data.subjects);
+    const additionalDocuments = safeJsonParse(data.additional_documents ?? data.additionalDocuments, []);
+    const staffAddress = parseStaffAddress(data);
 
     // 5. Create StaffDetails record mapped to organization_id
     const staff = this.staffRepo.create({
@@ -162,6 +189,7 @@ export class StaffDetailsService {
       employee_experience_letter_file_id: expLetterFileId || data.employee_experience_letter_file_id || null,
       employee_relieving_letter_file_id: relievingLetterFileId || data.employee_relieving_letter_file_id || null,
       additional_documents: additionalDocuments,
+      staff_address: staffAddress,
       employee_type: (data.employee_type || data.employeeType || EmployeeType.TEACHER) as EmployeeType,
       subjects: parsedSubjects,
       status: data.status || 'active',
@@ -259,63 +287,57 @@ export class StaffDetailsService {
   ) {
     const staff = await this.findById(id);
 
-    if (data.employee_first_name || data.firstName) {
-      staff.employee_first_name = data.employee_first_name || data.firstName;
-    }
-    if (data.employee_last_name !== undefined || data.lastName !== undefined) {
-      staff.employee_last_name = data.employee_last_name ?? data.lastName ?? staff.employee_last_name;
-    }
-    if (data.employee_email || data.email) {
-      staff.employee_email = (data.employee_email || data.email).trim().toLowerCase();
-    }
-    if (data.employee_mobile_number || data.mobile) {
-      staff.employee_mobile_number = data.employee_mobile_number || data.mobile;
-    }
-    if (data.employee_pan_number !== undefined || data.panNumber !== undefined) {
-      staff.employee_pan_number = data.employee_pan_number ?? data.panNumber;
-    }
-    if (data.employee_aadhar_number !== undefined || data.aadharNumber !== undefined) {
-      staff.employee_aadhar_number = data.employee_aadhar_number ?? data.aadharNumber;
-    }
-    if (data.employee_experience !== undefined || data.experience !== undefined) {
-      staff.employee_experience = data.employee_experience ?? data.experience;
-    }
-    if (data.employee_previous_work_institute_name !== undefined || data.previousInstitute !== undefined) {
-      staff.employee_previous_work_institute_name =
-        data.employee_previous_work_institute_name ?? data.previousInstitute;
-    }
-    if (data.employee_type || data.employeeType) {
-      staff.employee_type = data.employee_type || data.employeeType;
-    }
-    if (data.subjects !== undefined) {
-      let parsedSubjects: string[] = [];
-      const rawSubjects = data.subjects;
-      if (Array.isArray(rawSubjects)) {
-        parsedSubjects = rawSubjects;
-      } else if (typeof rawSubjects === 'string' && rawSubjects.trim()) {
-        try {
-          const parsed = JSON.parse(rawSubjects);
-          parsedSubjects = Array.isArray(parsed) ? parsed : [rawSubjects];
-        } catch {
-          parsedSubjects = rawSubjects.split(',').map((s: string) => s.trim()).filter(Boolean);
-        }
+    // Dynamic field assignment
+    const fieldMap: Record<string, any> = {
+      employee_first_name: data.employee_first_name ?? data.firstName,
+      employee_last_name: data.employee_last_name ?? data.lastName,
+      employee_email: (data.employee_email ?? data.email)?.trim()?.toLowerCase(),
+      employee_mobile_number: data.employee_mobile_number ?? data.mobile,
+      employee_pan_number: data.employee_pan_number ?? data.panNumber,
+      employee_aadhar_number: data.employee_aadhar_number ?? data.aadharNumber,
+      employee_experience: data.employee_experience ?? data.experience,
+      employee_previous_work_institute_name:
+        data.employee_previous_work_institute_name ?? data.previousInstitute,
+      employee_type: data.employee_type ?? data.employeeType,
+    };
+
+    for (const [key, value] of Object.entries(fieldMap)) {
+      if (value !== undefined) {
+        (staff as any)[key] = value;
       }
-      staff.subjects = parsedSubjects;
     }
 
-    // Upload replacement files if supplied
-    if (files?.panFile?.[0]) {
-      staff.employee_pan_file_id = await this.uploadDoc(files.panFile[0], 'staff_pan');
+    if (data.subjects !== undefined) {
+      staff.subjects = parseStringArray(data.subjects);
     }
-    if (files?.aadharFile?.[0]) {
-      staff.employee_aadhar_file_id = await this.uploadDoc(files.aadharFile[0], 'staff_aadhar');
+
+    if (data.additional_documents !== undefined || data.additionalDocuments !== undefined) {
+      staff.additional_documents = safeJsonParse(
+        data.additional_documents ?? data.additionalDocuments,
+        staff.additional_documents || [],
+      );
     }
-    if (files?.expLetterFile?.[0]) {
-      staff.employee_experience_letter_file_id = await this.uploadDoc(files.expLetterFile[0], 'staff_exp');
+
+    const resolvedAddress = parseStaffAddress(data, staff.staff_address);
+    if (resolvedAddress) {
+      staff.staff_address = {
+        ...(staff.staff_address || {}),
+        ...resolvedAddress,
+      };
     }
-    if (files?.relievingLetterFile?.[0]) {
-      staff.employee_relieving_letter_file_id = await this.uploadDoc(files.relievingLetterFile[0], 'staff_relieving');
-    }
+
+    // Upload replacement files concurrently
+    const [panFileId, aadharFileId, expLetterFileId, relievingLetterFileId] = await Promise.all([
+      files?.panFile?.[0] ? this.uploadDoc(files.panFile[0], 'staff_pan') : null,
+      files?.aadharFile?.[0] ? this.uploadDoc(files.aadharFile[0], 'staff_aadhar') : null,
+      files?.expLetterFile?.[0] ? this.uploadDoc(files.expLetterFile[0], 'staff_exp') : null,
+      files?.relievingLetterFile?.[0] ? this.uploadDoc(files.relievingLetterFile[0], 'staff_relieving') : null,
+    ]);
+
+    if (panFileId) staff.employee_pan_file_id = panFileId;
+    if (aadharFileId) staff.employee_aadhar_file_id = aadharFileId;
+    if (expLetterFileId) staff.employee_experience_letter_file_id = expLetterFileId;
+    if (relievingLetterFileId) staff.employee_relieving_letter_file_id = relievingLetterFileId;
 
     return this.staffRepo.save(staff);
   }

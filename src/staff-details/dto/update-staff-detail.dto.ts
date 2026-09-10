@@ -23,6 +23,14 @@ export class UpdateStaffDetailDto {
     file_name?: string;
   }>;
 
+  staff_address?: {
+    current_address?: string;
+    permanent_address?: string;
+    state?: string;
+    country?: string;
+    pincode?: string;
+  };
+
   employee_type?: EmployeeType;
   subjects?: string[];
   status?: string;
