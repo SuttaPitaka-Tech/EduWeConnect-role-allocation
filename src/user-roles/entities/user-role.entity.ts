@@ -22,7 +22,7 @@ export class UserRole {
   @Column()
   email_id: string;
 
-  @Column()
+  @Column({ nullable: true })
   mobile_number: string;
 
   @Column()

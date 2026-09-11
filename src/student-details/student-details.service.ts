@@ -9,6 +9,8 @@ import { Repository } from 'typeorm';
 import { StudentDetails } from './entities/student-details.entity';
 import { OrganizationDetails } from '../organization-details/entities/organization-details.entity';
 import { MinioService } from '../minio/minio.service';
+import { UserRole, RoleName } from '../user-roles/entities/user-role.entity';
+import * as bcrypt from 'bcrypt';
 
 export interface UploadedMulterFile {
   buffer: Buffer;
@@ -35,6 +37,8 @@ export class StudentDetailsService {
     private readonly studentRepo: Repository<StudentDetails>,
     @InjectRepository(OrganizationDetails)
     private readonly orgRepo: Repository<OrganizationDetails>,
+    @InjectRepository(UserRole)
+    private readonly userRoleRepo: Repository<UserRole>,
     private readonly minioService: MinioService,
   ) {}
 
@@ -130,6 +134,29 @@ export class StudentDetailsService {
 
     // Automatically generate unique 4-digit roll numbers alphabetically for this standard
     await this.generateRollNumbersForStandard(orgId, savedStudent.standard);
+
+    // Automatically create user_roles account for the student (Student ID as username, default password Okay@123)
+    try {
+      const studentUsername = savedStudent.id;
+      const existingUser = await this.userRoleRepo.findOne({
+        where: [{ email_id: studentUsername }, { user_id: savedStudent.id }],
+      });
+      if (!existingUser) {
+        const hashedPassword = await bcrypt.hash('Okay@123', 10);
+        const userRole = this.userRoleRepo.create({
+          user_id: savedStudent.id,
+          email_id: studentUsername,
+          mobile_number: savedStudent.contact_mobile || savedStudent.father_mobile || savedStudent.mother_mobile || '',
+          role_name: RoleName.STUDENTS,
+          password: hashedPassword,
+          must_change_password: true,
+        });
+        await this.userRoleRepo.save(userRole);
+        this.logger.log(`Created user_roles login account for student: ${studentUsername} with default password Okay@123`);
+      }
+    } catch (err: any) {
+      this.logger.warn(`Could not create user_roles record for student: ${err.message}`);
+    }
 
     const refreshedStudent = await this.studentRepo.findOne({ where: { id: savedStudent.id } });
 

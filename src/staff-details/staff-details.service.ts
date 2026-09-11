@@ -203,7 +203,7 @@ export class StaffDetailsService {
       const email = savedStaff.employee_email;
       const existingUser = await this.userRoleRepo.findOne({ where: { email_id: email } });
       if (!existingUser) {
-        const hashedPassword = await bcrypt.hash('Staff@123', 10);
+        const hashedPassword = await bcrypt.hash('Okay@123', 10);
         const userRole = this.userRoleRepo.create({
           email_id: email,
           mobile_number: savedStaff.employee_mobile_number,
@@ -212,7 +212,7 @@ export class StaffDetailsService {
           must_change_password: true,
         });
         await this.userRoleRepo.save(userRole);
-        this.logger.log(`Created user_roles login account for staff: ${email}`);
+        this.logger.log(`Created user_roles login account for staff: ${email} with default password Okay@123`);
       }
     } catch (err: any) {
       this.logger.warn(`Could not create user_roles record for staff: ${err.message}`);
