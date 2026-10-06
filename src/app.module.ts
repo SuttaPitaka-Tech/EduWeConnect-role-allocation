@@ -9,6 +9,7 @@ import { UserRolesModule } from './user-roles/user-roles.module';
 import { OrganizationDetailsModule } from './organization-details/organization-details.module';
 import { StaffDetailsModule } from './staff-details/staff-details.module';
 import { StudentDetailsModule } from './student-details/student-details.module';
+import { MenusModule } from './menus/menus.module';
 
 @Module({
   imports: [
@@ -32,6 +33,7 @@ import { StudentDetailsModule } from './student-details/student-details.module';
     OrganizationDetailsModule,
     StaffDetailsModule,
     StudentDetailsModule,
+    MenusModule,
   ],
   controllers: [AppController],
   providers: [AppService],
