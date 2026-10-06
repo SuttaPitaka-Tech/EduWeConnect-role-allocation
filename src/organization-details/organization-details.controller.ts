@@ -39,6 +39,11 @@ export class OrganizationDetailsController {
     return this.orgDetailsService.register(body, files || {});
   }
 
+  @Get('dashboard/stats')
+  async getDashboardStats() {
+    return this.orgDetailsService.getDashboardStats();
+  }
+
   @Get()
   async findAll() {
     return this.orgDetailsService.findAll();

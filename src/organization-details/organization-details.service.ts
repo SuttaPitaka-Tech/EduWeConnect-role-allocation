@@ -5,7 +5,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, DataSource } from 'typeorm';
 import { OrganizationDetails } from './entities/organization-details.entity';
 import { MinioService } from '../minio/minio.service';
 import { UserRole, RoleName } from '../user-roles/entities/user-role.entity';
@@ -37,6 +37,7 @@ export class OrganizationDetailsService {
     @InjectRepository(UserRole)
     private readonly userRoleRepo: Repository<UserRole>,
     private readonly minioService: MinioService,
+    private readonly dataSource: DataSource,
   ) {}
 
   private validateFile(file?: UploadedMulterFile) {
@@ -162,6 +163,25 @@ export class OrganizationDetailsService {
       this.logger.warn(`Could not sync to user_roles: ${err.message}`);
     }
 
+    // 5. Notify Super Admins about the new registration
+    try {
+      const notifyUrl = (process.env.NOTIFICATION_SERVICE_URL || 'http://localhost:7003') + '/api/notifications/system';
+      await fetch(notifyUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          recipientId: 'SUPER_ADMIN_ROLE',
+          title: 'New Organization Registration',
+          description: `${savedOrg.organization_name} has registered and is awaiting your approval.`,
+          type: 'approval',
+          organizationName: savedOrg.organization_name
+        })
+      });
+      this.logger.log(`Sent approval notification for org: ${savedOrg.organization_name}`);
+    } catch (err: any) {
+      this.logger.warn(`Could not send approval notification: ${err.message}`);
+    }
+
     return {
       message: 'Organization registered successfully',
       organization: savedOrg,
@@ -230,5 +250,99 @@ export class OrganizationDetailsService {
     }
 
     return this.findById(saved.id);
+  }
+
+  // ---------------------------------------------------------------------------
+  // DASHBOARD STATS FOR SUPER ADMIN
+  // ---------------------------------------------------------------------------
+  private async getDynamicChatStats() {
+    let totalMessages = 0;
+    let activeGroups = 0;
+    let messagesToday = 0;
+    let growth = 12.5; // Mocked growth factor
+    let rankedChatters = [];
+    
+    const daysOfWeek = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    const weeklyDataMap = new Map<string, number>(daysOfWeek.map(d => [d, 0]));
+
+    try {
+      const [statsRes, weeklyRes, topChattersRes] = await Promise.all([
+        this.dataSource.query(`
+          SELECT 
+            COUNT(*) as totalMessages,
+            COUNT(DISTINCT conversation_id) as activeGroups,
+            CAST(SUM(CASE WHEN DATE(created_at) = CURDATE() THEN 1 ELSE 0 END) AS UNSIGNED) as messagesToday
+          FROM \`eduweconn-notification-service\`.chat_messages
+        `),
+        this.dataSource.query(`
+          SELECT DATE_FORMAT(created_at, '%a') as day, COUNT(*) as messages 
+          FROM \`eduweconn-notification-service\`.chat_messages 
+          WHERE created_at >= DATE_SUB(CURDATE(), INTERVAL 6 DAY) 
+          GROUP BY DATE(created_at), DATE_FORMAT(created_at, '%a') 
+          ORDER BY DATE(created_at)
+        `),
+        this.dataSource.query(`
+          SELECT sender_name as name, COUNT(*) as messageCount 
+          FROM \`eduweconn-notification-service\`.chat_messages 
+          GROUP BY sender_name 
+          ORDER BY messageCount DESC 
+          LIMIT 5
+        `)
+      ]);
+
+      if (statsRes?.length) {
+        totalMessages = parseInt(statsRes[0].totalMessages || '0', 10);
+        activeGroups = parseInt(statsRes[0].activeGroups || '0', 10);
+        messagesToday = parseInt(statsRes[0].messagesToday || '0', 10);
+      }
+
+      if (weeklyRes?.length) {
+        weeklyRes.forEach((row: any) => weeklyDataMap.set(row.day, parseInt(row.messages, 10)));
+      }
+
+      if (topChattersRes?.length) {
+        rankedChatters = topChattersRes.map((c: any) => ({
+          name: c.name,
+          messages: parseInt(c.messageCount, 10)
+        }));
+      }
+    } catch (e) {
+      this.logger.error('Error fetching dynamic chat stats from DB', e);
+    }
+
+    return {
+      totalMessages,
+      activeGroups,
+      messagesToday,
+      growth,
+      weeklyData: daysOfWeek.map(day => ({ day, messages: weeklyDataMap.get(day) || 0 })),
+      topChatters: rankedChatters
+    };
+  }
+
+  async getDashboardStats() {
+    const allOrgs = await this.orgDetailsRepo.find();
+    
+    let pending = 0;
+    let approved = 0;
+    let rejected = 0;
+    
+    allOrgs.forEach(org => {
+      if (org.status === 'pending') pending++;
+      else if (org.status === 'approved') approved++;
+      else if (org.status === 'rejected') rejected++;
+    });
+
+    const chatStats = await this.getDynamicChatStats();
+
+    return {
+      organizations: {
+        total: allOrgs.length,
+        pending,
+        approved,
+        rejected
+      },
+      chats: chatStats
+    };
   }
 }
